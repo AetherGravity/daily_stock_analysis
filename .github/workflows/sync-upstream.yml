@@ -2,8 +2,11 @@ name: Sync Fork
 
 on:
   schedule:
-    - cron: '0 2 * * *'  # 每天台灣時間早上10點
+    - cron: '0 2 * * *'
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   sync:
@@ -11,13 +14,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sync upstream
         run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
           git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
           git fetch upstream
-          git checkout main
-          git merge upstream/main --allow-unrelated-histories -m "chore: sync upstream"
+          git merge upstream/main --allow-unrelated-histories -m "chore: sync upstream" || true
           git push origin main
