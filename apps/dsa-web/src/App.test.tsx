@@ -136,6 +136,65 @@ describe('App routing behavior', () => {
     expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
   });
 
+  it('preserves the query and fragment when redirecting a protected deep link to login', async () => {
+    vi.mocked(AuthContext.useAuth).mockReturnValue(makeAuthState({
+      authEnabled: true,
+      loggedIn: false,
+      setupState: 'enabled',
+    }));
+    const destination = '/settings?category=system#desktop-version-info';
+    window.history.pushState({}, '', destination);
+
+    render(<App />);
+
+    expect(await screen.findByTestId('login-page')).toBeInTheDocument();
+    expect(window.location.pathname).toBe('/login');
+    expect(new URLSearchParams(window.location.search).get('redirect')).toBe(destination);
+    expect(window.location.hash).toBe('');
+  });
+
+  it('uses the safe deep link when auth resolves before the login page can navigate', async () => {
+    vi.mocked(AuthContext.useAuth).mockReturnValue(makeAuthState({
+      authEnabled: true,
+      loggedIn: true,
+      setupState: 'enabled',
+    }));
+    const destination = '/settings?category=system#desktop-version-info';
+    window.history.pushState({}, '', `/login?redirect=${encodeURIComponent(destination)}`);
+
+    render(<App />);
+
+    expect(await screen.findByTestId('settings-page')).toBeInTheDocument();
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe(destination);
+    expect(screen.queryByTestId('home-page')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    'https://external.example/settings',
+    '//external.example/settings',
+    '/\\external.example/settings',
+    '/%5cexternal.example/settings',
+    '/%2fexternal.example/settings',
+    '/..//external.example/settings',
+    '/\t/external.example/settings',
+    '/login?redirect=%2Fsettings',
+    '/LOGIN/',
+  ])('falls back to home for unsafe or looping login redirect %s', async (destination) => {
+    vi.mocked(AuthContext.useAuth).mockReturnValue(makeAuthState({
+      authEnabled: true,
+      loggedIn: true,
+      setupState: 'enabled',
+    }));
+    const origin = window.location.origin;
+    window.history.pushState({}, '', `/login?redirect=${encodeURIComponent(destination)}`);
+
+    render(<App />);
+
+    expect(await screen.findByTestId('home-page')).toBeInTheDocument();
+    expect(window.location.origin).toBe(origin);
+    expect(window.location.pathname + window.location.search + window.location.hash).toBe('/');
+  });
+
   it('routes /usage to the token usage page after auth is ready', async () => {
     window.history.pushState({}, '', '/usage');
 

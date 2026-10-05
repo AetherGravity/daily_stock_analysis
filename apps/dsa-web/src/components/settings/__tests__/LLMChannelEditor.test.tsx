@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { LLMChannelEditor } from '../LLMChannelEditor';
 
@@ -47,6 +47,43 @@ describe('LLMChannelEditor', () => {
     const calls = onDraftItemsChange.mock.calls;
     return calls[calls.length - 1]?.[0] || [];
   }
+
+  it.each(['success', 'failure'])('reports save activity until a %s settles, including the post-save refresh', async (outcome) => {
+    let resolveUpdate!: (value: { warnings: string[] }) => void;
+    let rejectUpdate!: (reason: Error) => void;
+    let resolveRefresh!: () => void;
+    update.mockReturnValue(new Promise<{ warnings: string[] }>((resolve, reject) => {
+      resolveUpdate = resolve;
+      rejectUpdate = reject;
+    }));
+    const onSaved = vi.fn(() => new Promise<void>((resolve) => { resolveRefresh = resolve; }));
+    const onSavingChange = vi.fn();
+    render(
+      <LLMChannelEditor
+        items={openAiItems}
+        configVersion="v1"
+        maskToken="******"
+        onSaved={onSaved}
+        onSavingChange={onSavingChange}
+      />
+    );
+    expect(onSavingChange).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI 官方/i }));
+    fireEvent.change(await screen.findByLabelText('Base URL'), { target: { value: 'https://draft.example.com/v1' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存 AI 配置' }));
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(true));
+
+    if (outcome === 'success') {
+      await act(async () => resolveUpdate({ warnings: [] }));
+      expect(onSaved).toHaveBeenCalledTimes(1);
+      expect(onSavingChange).toHaveBeenLastCalledWith(true);
+      await act(async () => resolveRefresh());
+    } else {
+      await act(async () => rejectUpdate(new Error('Save failed')));
+      expect(onSaved).not.toHaveBeenCalled();
+    }
+    await waitFor(() => expect(onSavingChange).toHaveBeenLastCalledWith(false));
+  });
 
   it('reports an empty generation backend draft when channel settings are unchanged', async () => {
     const onDraftItemsChange = vi.fn();
@@ -242,6 +279,7 @@ describe('LLMChannelEditor', () => {
 
   it('returns to an empty generation backend draft after channel edits are restored', async () => {
     const onDraftItemsChange = vi.fn();
+    const onDirtyChange = vi.fn();
     render(
       <LLMChannelEditor
         items={openAiItems}
@@ -249,6 +287,7 @@ describe('LLMChannelEditor', () => {
         maskToken="******"
         onSaved={() => {}}
         onDraftItemsChange={onDraftItemsChange}
+        onDirtyChange={onDirtyChange}
       />
     );
 
@@ -260,15 +299,31 @@ describe('LLMChannelEditor', () => {
       value: 'https://proxy.example.com/v1',
     }));
 
+    expect(onDirtyChange).toHaveBeenLastCalledWith(true);
     fireEvent.change(baseUrlInput, { target: { value: 'https://api.openai.com/v1' } });
 
     await waitFor(() => {
       expect(lastDraftCall(onDraftItemsChange)).toEqual([]);
+      expect(onDirtyChange).toHaveBeenLastCalledWith(false);
     });
+  });
+
+  it('resets local channel drafts when the page reset token changes', async () => {
+    const onDirtyChange = vi.fn();
+    const props = { items: openAiItems, configVersion: 'v1', maskToken: '******', onSaved: () => {}, onDirtyChange };
+    const { rerender } = render(<LLMChannelEditor {...props} draftResetToken={0} />);
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI 官方/i }));
+    fireEvent.change(await screen.findByLabelText('渠道名称'), { target: { value: '' } });
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    rerender(<LLMChannelEditor {...props} draftResetToken={1} />);
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI 官方/i }));
+    expect(await screen.findByLabelText('渠道名称')).toHaveValue('openai');
   });
 
   it('does not emit invalid channel env keys while the channel name is empty', async () => {
     const onDraftItemsChange = vi.fn();
+    const onDirtyChange = vi.fn();
     render(
       <LLMChannelEditor
         items={openAiItems}
@@ -276,6 +331,7 @@ describe('LLMChannelEditor', () => {
         maskToken="******"
         onSaved={() => {}}
         onDraftItemsChange={onDraftItemsChange}
+        onDirtyChange={onDirtyChange}
       />
     );
 
@@ -284,6 +340,7 @@ describe('LLMChannelEditor', () => {
 
     await waitFor(() => {
       expect(lastDraftCall(onDraftItemsChange)).toEqual([]);
+      expect(onDirtyChange).toHaveBeenLastCalledWith(true);
     });
     expect(onDraftItemsChange.mock.calls.flatMap((call) => call[0]).some((item) => item.key.startsWith('LLM__'))).toBe(false);
   });

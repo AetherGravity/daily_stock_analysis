@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 > For user-friendly release highlights, see the [GitHub Releases](https://github.com/ZhuLinsen/daily_stock_analysis/releases) page.
 
 ## [Unreleased]
+- [修复] Web 设置页统一保护普通配置、模型渠道与调度草稿，重置和成功导入清理全部旧草稿，保存及导入期间避免编辑和离开竞态；登录后保留安全站内目标及 query/hash。
 
 - [修复] 妙想补充查询采用跨实例/筹码与资金流共享的非阻塞准入及超时隔离，避免过期后台请求排队消耗额度；明确排除日线能力，并统一列表型 nameMap 的选表与解析。
 - [修复] 默认 Web smoke 排除独立 fixture 目录，避免无密码且未启动 Web 服务时错误收集选股用例；CI 同时验收默认和 fixture 入口。

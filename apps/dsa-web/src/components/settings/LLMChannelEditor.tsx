@@ -143,6 +143,9 @@ interface LLMChannelEditorProps {
   modelProviderPrefixes?: string[];
   onSaved: (updatedItems: Array<{ key: string; value: string }>) => void | Promise<void>;
   onDraftItemsChange?: (items: Array<{ key: string; value: string }>) => void;
+  onDirtyChange?: (dirty: boolean) => void;
+  onSavingChange?: (saving: boolean) => void;
+  draftResetToken?: number;
   disabled?: boolean;
 }
 
@@ -1635,6 +1638,9 @@ export const LLMChannelEditor: React.FC<LLMChannelEditorProps> = ({
   modelProviderPrefixes = [],
   onSaved,
   onDraftItemsChange,
+  onDirtyChange,
+  onSavingChange,
+  draftResetToken = 0,
   disabled = false,
 }) => {
   const initialItemSourceByKey = useMemo(() => {
@@ -1703,6 +1709,7 @@ export const LLMChannelEditor: React.FC<LLMChannelEditorProps> = ({
   const lastDraftFingerprintRef = useRef<string | null>(null);
   const onDraftItemsChangeRef = useRef(onDraftItemsChange);
 
+  const prevDraftResetTokenRef = useRef(draftResetToken);
   const prevChannelsRef = useRef(channelsFingerprint);
   const prevRuntimeRef = useRef(runtimeFingerprint);
   const pendingSaveFeedbackFingerprintRef = useRef<{ channels: string; runtime: string } | null>(null);
@@ -1712,9 +1719,11 @@ export const LLMChannelEditor: React.FC<LLMChannelEditorProps> = ({
   const capabilityRequestIdRef = useRef(0);
 
   useEffect(() => {
-    if (prevChannelsRef.current === channelsFingerprint && prevRuntimeRef.current === runtimeFingerprint) {
+    if (prevChannelsRef.current === channelsFingerprint && prevRuntimeRef.current === runtimeFingerprint
+      && prevDraftResetTokenRef.current === draftResetToken) {
       return;
     }
+    prevDraftResetTokenRef.current = draftResetToken;
     prevChannelsRef.current = channelsFingerprint;
     prevRuntimeRef.current = runtimeFingerprint;
     const pendingSaveFeedbackFingerprint = pendingSaveFeedbackFingerprintRef.current;
@@ -1735,7 +1744,7 @@ export const LLMChannelEditor: React.FC<LLMChannelEditorProps> = ({
       setSaveWarnings([]);
     }
     setIsCollapsed(false);
-  }, [channelsFingerprint, runtimeFingerprint, initialChannels, initialRuntimeConfig]);
+  }, [channelsFingerprint, runtimeFingerprint, initialChannels, initialRuntimeConfig, draftResetToken]);
 
   const routeProvenanceMap = useMemo(() => {
     if (!managesRuntimeConfig) {
@@ -1795,6 +1804,16 @@ export const LLMChannelEditor: React.FC<LLMChannelEditorProps> = ({
     }
     return channels.some((channel, index) => !channelsAreEqual(channel, initialChannels[index]));
   }, [channels, initialChannels, initialRuntimeConfig, runtimeConfig]);
+
+  useEffect(() => {
+    onDirtyChange?.(hasChanges);
+    return () => onDirtyChange?.(false);
+  }, [hasChanges, onDirtyChange]);
+
+  useEffect(() => {
+    onSavingChange?.(isSaving);
+    return () => onSavingChange?.(false);
+  }, [isSaving, onSavingChange]);
 
   const draftItems = useMemo(() => buildChannelDraftItems({
     hasChanges,

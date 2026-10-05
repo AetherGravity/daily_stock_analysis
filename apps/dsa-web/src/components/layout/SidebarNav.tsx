@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Activity, BarChart3, Bell, BriefcaseBusiness, Database, Gauge, Home, LogOut, MessageSquareQuote, Search, Settings2 } from 'lucide-react';
-import { NavLink } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
 import { SCREENING_CONFIG_CHANGED_EVENT, SYSTEM_CONFIG_CHANGED_EVENT, screeningApi } from '../../api/screening';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgentChatStore } from '../../stores/agentChatStore';
@@ -42,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNavigate, variant = 'default' }) => {
   const { authEnabled, logout } = useAuth();
+  const location = useLocation();
   const { t } = useUiLanguage();
   const completionBadge = useAgentChatStore((state) => state.completionBadge);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -194,7 +195,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNav
       <ConfirmDialog
         isOpen={showLogoutConfirm}
         title={t('layout.logoutTitle')}
-        message={t('layout.logoutMessage')}
+        message={t(/^\/settings\/?$/.test(location.pathname) ? 'layout.logoutSettingsMessage' : 'layout.logoutMessage')}
         confirmText={t('layout.logoutConfirm')}
         cancelText={t('common.cancel')}
         isDanger
