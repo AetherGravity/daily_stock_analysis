@@ -195,10 +195,70 @@ describe('StockScreeningPage', () => {
     fireEvent.click(screen.getByRole('button', { name: '开启选股' }));
 
     await waitFor(() => expect(getScreeningStatus).toHaveBeenCalledTimes(2));
-    expect(screen.getAllByText('选股未开启').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.queryByText('选股未开启')).not.toBeInTheDocument());
     expect(screen.getByRole('button', { name: /运行选股/ })).toBeDisabled();
-    expect(screen.getByText('选股功能不可用')).toBeInTheDocument();
+    expect(screen.getAllByText('选股功能不可用').length).toBeGreaterThan(0);
     expect(screen.getByText('选股功能不可用，请检查后端日志')).toBeInTheDocument();
+  });
+
+  it('does not offer activation before the configuration is known', async () => {
+    const status = createDeferred<{ enabled: boolean; available: boolean }>();
+    getScreeningStatus.mockReturnValueOnce(status.promise);
+    render(<StockScreeningPage />);
+
+    expect(screen.getByText('正在检查选股状态')).toBeInTheDocument();
+    expect(screen.queryByText('选股未开启')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开启选股' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /运行选股/ })).toBeDisabled();
+    expect(getStrategies).not.toHaveBeenCalled();
+    expect(getHotspots).not.toHaveBeenCalled();
+
+    await act(async () => status.resolve({ enabled: false, available: true }));
+    expect(screen.getByRole('button', { name: '开启选股' })).toBeEnabled();
+    expect(enableScreening).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('retries unknown status without changing configuration (enabled=%s)', async (enabled) => {
+    const retry = createDeferred<{ enabled: boolean; available: boolean }>();
+    getScreeningStatus.mockRejectedValueOnce(new Error('status unavailable')).mockReturnValueOnce(retry.promise);
+    render(<StockScreeningPage />);
+
+    expect(await screen.findByText('选股状态加载失败')).toBeInTheDocument();
+    expect(screen.getByText('选股状态未知')).toBeInTheDocument();
+    expect(screen.queryByText('选股未开启')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开启选股' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /运行选股/ })).toBeDisabled();
+    expect(getHistory).not.toHaveBeenCalled();
+    expect(getStrategies).not.toHaveBeenCalled();
+    expect(getHotspots).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: '重试' }));
+    expect(screen.getByText('正在检查选股状态')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重试' })).not.toBeInTheDocument();
+    await act(async () => retry.resolve({ enabled, available: true }));
+    expect(screen.queryByText('选股状态加载失败')).not.toBeInTheDocument();
+    if (enabled) {
+      expect(screen.getByText('选股已开启')).toBeInTheDocument();
+      await waitFor(() => expect(getStrategies).toHaveBeenCalledTimes(1));
+      expect(getHistory).toHaveBeenCalledTimes(1);
+    } else {
+      expect(screen.getByRole('button', { name: '开启选股' })).toBeEnabled();
+      expect(getStrategies).not.toHaveBeenCalled();
+    }
+    expect(enableScreening).not.toHaveBeenCalled();
+    expect(startScreenTask).not.toHaveBeenCalled();
+  });
+
+  it('keeps status unknown when enabling fails and configuration cannot be re-read', async () => {
+    getScreeningStatus.mockResolvedValueOnce({ enabled: false, available: true })
+      .mockRejectedValueOnce(new Error('status offline'));
+    enableScreening.mockRejectedValueOnce(new Error('enable failed'));
+    render(<StockScreeningPage />);
+    fireEvent.click(await screen.findByRole('button', { name: '开启选股' }));
+    expect(await screen.findByText('选股状态加载失败')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '开启选股' })).not.toBeInTheDocument();
+    expect(screen.queryByText('选股未开启')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /运行选股/ })).toBeDisabled();
   });
 
   it('loads Screening hotspot themes on demand', async () => {

@@ -841,6 +841,9 @@ const MiniSparkline: React.FC<{ score?: number | null; selected?: boolean }> = (
 const StockScreeningPage: React.FC = () => {
   const navigate = useNavigate();
   const [restoredTask] = useState<PersistedScreenTask | null>(() => readPersistedScreenTask());
+  const [statusState, setStatusState] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [statusError, setStatusError] = useState('');
+  const [statusAttempt, setStatusAttempt] = useState(0);
   const [enabled, setEnabled] = useState(false);
   const [available, setAvailable] = useState(false);
   const [market, setMarket] = useState(restoredTask?.market || 'cn');
@@ -899,8 +902,14 @@ const StockScreeningPage: React.FC = () => {
       ? screenMessages
       : ['智能重排未完成，当前候选继续使用确定性因子评分。']
     : screenMessages;
-  const isScreeningEnabled = enabled && available;
-  const statusText = isScreeningEnabled ? '选股已开启' : '选股未开启';
+  const isScreeningEnabled = statusState === 'ready' && enabled && available;
+  const statusText = statusState === 'loading'
+    ? '正在检查选股状态'
+    : statusState === 'error'
+      ? '选股状态未知'
+      : !enabled
+        ? '选股未开启'
+        : available ? '选股已开启' : '选股功能不可用';
 
   const applyScreenResult = useCallback((result: ScreeningScreenResponse) => {
     const nextCandidates = result.candidates || [];
@@ -1196,22 +1205,23 @@ const StockScreeningPage: React.FC = () => {
         }
         setEnabled(status.enabled);
         setAvailable(status.available);
+        setStatusState('ready');
         if (status.enabled && status.available) {
           void loadStrategies();
           void loadHotspots(false);
           void loadHistory();
         }
       })
-      .catch(() => {
+      .catch((err) => {
         if (active) {
-          setEnabled(false);
-          setAvailable(false);
+          setStatusError(toApiErrorMessage(err, '无法确认选股状态，请重试。'));
+          setStatusState('error');
         }
       });
     return () => {
       active = false;
     };
-  }, [loadHotspots, loadStrategies]);
+  }, [loadHistory, loadHotspots, loadStrategies, statusAttempt]);
 
   // 刷新后优先从 history API 按 run_id 恢复结果；恢复失败再回退到 task 轮询
   useEffect(() => {
@@ -1385,9 +1395,10 @@ const StockScreeningPage: React.FC = () => {
         const status = await screeningApi.getStatus();
         setEnabled(status.enabled);
         setAvailable(status.available);
-      } catch {
-        setEnabled(false);
-        setAvailable(false);
+        setStatusState('ready');
+      } catch (statusErr) {
+        setStatusError(toApiErrorMessage(statusErr, '无法确认选股状态，请重试。'));
+        setStatusState('error');
       }
       setError(err instanceof Error ? err.message : '开启选股失败');
     } finally {
@@ -1461,7 +1472,28 @@ const StockScreeningPage: React.FC = () => {
         </div>
       </div>
 
-      {!enabled ? (
+      {statusState === 'loading' ? (
+        <InlineAlert variant="info" message="正在读取选股配置，请稍候。" />
+      ) : null}
+
+      {statusState === 'error' ? (
+        <InlineAlert
+          variant="warning"
+          title="选股状态加载失败"
+          message={statusError}
+          action={
+            <Button size="sm" onClick={() => {
+              setStatusState('loading');
+              setStatusError('');
+              setStatusAttempt((attempt) => attempt + 1);
+            }}>
+              重试
+            </Button>
+          }
+        />
+      ) : null}
+
+      {statusState === 'ready' && !enabled ? (
         <InlineAlert
           variant="info"
           title="选股未开启"
@@ -1474,7 +1506,7 @@ const StockScreeningPage: React.FC = () => {
         />
       ) : null}
 
-      {enabled && !available ? (
+      {statusState === 'ready' && enabled && !available ? (
         <InlineAlert
           variant="warning"
           title="选股功能不可用"
