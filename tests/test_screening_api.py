@@ -30,6 +30,7 @@ except ModuleNotFoundError:
 
 from api.v1.endpoints import screening as screening_endpoint
 from src.config import Config
+from src.core.trading_calendar import build_market_phase_context
 from src.services import screening_service
 from src.services.screening import REFERENCE_REVISION
 from src.services.screening.config import Config as ScreeningPipelineConfig
@@ -2567,6 +2568,9 @@ class ScreeningOpportunitiesApiTestCase(unittest.TestCase):
 
         with (
             patch.object(daily_module, "fetch_daily_history", original_daily_fetch),
+            patch.object(daily_module, "build_market_phase_context", return_value=build_market_phase_context(
+                market="cn", current_time=datetime.fromisoformat("2026-06-03T16:00:00+08:00"),
+            )),
             _patch_screening_core(fake_module),
             patch(
                 "src.services.screening_service.get_dsa_daily_history",
@@ -3510,6 +3514,9 @@ class ScreeningOpportunitiesApiTestCase(unittest.TestCase):
         cache_path = cache_dir / "000001.auto.90.json"
 
         with (
+            patch.object(daily_module, "build_market_phase_context", return_value=build_market_phase_context(
+                market="cn", current_time=datetime.fromisoformat("2026-06-03T16:00:00+08:00"),
+            )),
             patch.object(
                 daily_module,
                 "fetch_daily_history",
