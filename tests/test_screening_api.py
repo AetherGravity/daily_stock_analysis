@@ -112,7 +112,7 @@ class ScreeningOpportunitiesApiTestCase(unittest.TestCase):
             )
         with patch(
             "src.services.screening_service._enrich_candidates_with_dsa",
-            side_effect=lambda candidates: (
+            side_effect=lambda candidates, **_kwargs: (
                 candidates,
                 {
                     "enabled": True,
@@ -2943,9 +2943,9 @@ class ScreeningOpportunitiesApiTestCase(unittest.TestCase):
         self.assertEqual(context["llm"]["channels"][0]["extra_headers"], {"x-tenant": "dsa"})
         self.assertEqual(context["llm"]["model_list"][0]["litellm_params"]["extra_headers"], {"x-tenant": "dsa"})
         self.assertIn("get_candidate_context", context["dsa"])
-        self.assertEqual(context["dsa"]["mode"], "pre_rank_light")
+        self.assertEqual(context["dsa"]["mode"], "pre_rank_research")
         self.assertEqual(context["dsa"]["max_candidates"], 3)
-        self.assertFalse(context["dsa"]["include_news"])
+        self.assertTrue(context["dsa"]["include_news"])
         self.assertNotIn("search_stock_news", context["dsa"])
         self.assertEqual(payload["candidate_count"], 0)
 
