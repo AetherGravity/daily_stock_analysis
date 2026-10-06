@@ -23,5 +23,9 @@ jobs:
           git config user.name "GitHub Action"
           git remote add upstream https://github.com/ZhuLinsen/daily_stock_analysis.git
           git fetch upstream
-          git merge upstream/main --allow-unrelated-histories -m "chore: sync upstream" || true
+          git merge upstream/main --allow-unrelated-histories --no-commit || true
+          # GITHUB_TOKEN cannot push workflow changes; keep this fork's own workflows
+          git rm -rfq .github/workflows
+          git checkout HEAD -- .github/workflows
+          git commit -m "chore: sync upstream" || true
           git push origin main
