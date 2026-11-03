@@ -1219,18 +1219,28 @@ def test_actual_chat_api_auth_runs_before_clarification_and_identity(actual_chat
     assert snapshot["session_generation"] is None and snapshot["messages"] == []
 
 
-@pytest.mark.parametrize("stream, arch", [(False, "single"), (True, "multi")])
-def test_actual_chat_api_clarification_preserves_codex_unsupported_boundary(actual_chat_api, db, stream, arch):
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("message", ["分析sh000001", "风险呢"])
+@pytest.mark.parametrize("existing", [False, True])
+def test_actual_chat_api_retired_backend_rejects_before_acceptance(actual_chat_api, db, stream, message, existing):
     client, requests, config = actual_chat_api
+    from src.services.agent_chat_session_service import AgentChatSessionService
+
+    service = AgentChatSessionService(db)
+    session_id = "retired-session"
+    if existing:
+        service.commit_user_turn(service.prepare_session_turn(config, session_id, "分析600519", ["ma_golden_cross"]))
+    before = db.read_chat_session_snapshot(session_id)
     config.agent_backend = "codex_app_server"
-    config.agent_arch = arch
     response = client.post("/api/v1/agent/chat" + ("/stream" if stream else ""), json={
-        "session_id": "unsupported-clarify", "message": "风险呢", "skills": [],
+        "session_id": session_id, "message": message, "skills": [],
+        **({"session_generation": before["session_generation"]} if existing else {}),
     })
     assert response.status_code == 400 and requests == []
-    assert response.json()["error"] == ("unsupported_agent_arch" if arch == "multi" else "capability_unsupported")
-    snapshot = db.read_chat_session_snapshot("unsupported-clarify")
-    assert snapshot["session_generation"] is None and snapshot["messages"] == []
+    assert response.json()["error"] == "backend_removed"
+    assert "已移除" in response.json()["message"]
+    assert "text/event-stream" not in response.headers.get("content-type", "")
+    assert db.read_chat_session_snapshot(session_id) == before
 
 
 @pytest.mark.parametrize("stream", [False, True])
@@ -1265,35 +1275,6 @@ def test_actual_multi_api_general_question_keeps_null_and_real_guard_denies_gues
     assert [row["role"] for row in current["messages"]] == ["user", "assistant"]
 
 
-@pytest.mark.parametrize("error_code", [None, "backend_failure", "timeout", "cancelled"])
-def test_actual_codex_factory_api_consumes_strict_accepted_snapshot_without_real_runtime(
-    actual_chat_api, db, monkeypatch, error_code,
-):
-    from src.agent.agent_backend import AgentRunResult
-    from src.agent.codex_agent_backend import CodexAgentBackend
-
-    client, requests, config = actual_chat_api
-    config.agent_backend = "codex_app_server"
-    calls = []
-    def controlled_runtime(_self, request):
-        calls.append(request)
-        return AgentRunResult(success=error_code is None, final_answer="fixture" if error_code is None else "",
-                              backend="codex_app_server", error_code=error_code, error_message=error_code)
-    monkeypatch.setattr(CodexAgentBackend, "run", controlled_runtime)
-    response = client.post("/api/v1/agent/chat/stream", json={
-        "session_id": "codex-api-state", "message": "分析sh000001", "skills": [],
-    })
-    assert response.status_code == 200 and requests == [] and len(calls) == 1
-    events = [json.loads(line[6:]) for line in response.text.splitlines() if line.startswith("data: ")]
-    assert [event["type"] for event in events] == ["accepted", "done"]
-    assert events[0]["active_stock_context"]["canonical_id"] == "sh000001"
-    assert events[0]["active_stock_context"]["asset_type"] == "index"
-    assert events[-1]["success"] is (error_code is None) and events[-1]["error_code"] == error_code
-    assert calls[0].stock_scope.strict and calls[0].stock_scope.identities[0].canonical_id == "sh000001"
-    current = db.read_chat_session_snapshot("codex-api-state")
-    assert current["session_state_version"] == 1 and current["selected_skill_ids"] == []
-    assert current["active_stock_context"]["asset_type"] == "index"
-    assert [row["role"] for row in current["messages"]] == ["user", "assistant"]
 
 
 @pytest.mark.parametrize("old_state_table", [False, True, "partial"])
@@ -2301,3 +2282,104 @@ def test_legacy_prepare_deletion_during_compression_cannot_rebind_request(db, ch
     assert called == [True]
     assert [m["content"] for m in db.get_conversation_messages(sid)] == ["分析300750"]
     assert db.get_conversation_summary(sid) is None
+
+
+@pytest.fixture
+def bundled_chat_stock_index(tmp_path, monkeypatch):
+    """Use the shipped catalogue, including real cross-stock short aliases."""
+    from pathlib import Path
+    from src.data import stock_index_loader
+
+    bundled = Path(__file__).resolve().parents[1] / "apps/dsa-web/public/stocks.index.json"
+    stock_index_loader.clear_stock_index_cache()
+    monkeypatch.setattr(stock_index_loader, "get_stock_index_candidate_paths", lambda: (bundled,))
+    monkeypatch.setattr(stock_index_loader, "get_remote_stock_index_cache_path", lambda: tmp_path / "absent.json")
+    yield
+    stock_index_loader.clear_stock_index_cache()
+
+
+@pytest.mark.parametrize("message,kind,code", [
+    ("请深入分析 长电科技(600584.SH)", "confirm", "600584"),
+    ("长电科技", "confirm", "600584"),
+    ("分析长电", "confirm", "600900"),
+    ("分析长电科技(600900.SH)", "clarify", None),
+    ("分析贵州茅台(600584.SH)", "clarify", None),
+    ("不要分析长电科技", "maintain", None),
+    ("如果上涨，就分析长电科技", "clarify", None),
+    ("他说“分析长电科技”", "clarify", None),
+    ("分析中芯国际", "clarify", None),
+    ("分析中芯国际(688981.SH)", "confirm", "688981"),
+    ("分析中芯国际(00981.HK)", "confirm", "HK00981"),
+    ("比较长电科技和长江电力", "compare", None),
+    ("长电科技和贵州茅台", "clarify", None),
+    ("请深入分析 平安银行(000001.SZ)", "confirm", "000001"),
+    ("请深入分析 中信银行(601998.SH)", "confirm", "601998"),
+    ("请深入分析 京东方A(000725.SZ)", "confirm", "000725"),
+])
+def test_full_registered_name_owns_embedded_mentions(bundled_chat_stock_index, message, kind, code):
+    from src.agent.chat_object_decision import decide_chat_object
+    from src.services.agent_chat_session_service import _stock_lookup
+
+    registry, lookup = _stock_lookup()
+    decision = decide_chat_object(message, None, registry, lookup)
+    assert decision.kind == kind
+    if code is not None:
+        assert decision.target.identity.stock_code == code
+    if kind == "compare":
+        assert {identity.stock_code for identity in decision.participants} == {"600584", "600900"}
+
+
+@pytest.fixture
+def actual_bundled_chat_api(actual_chat_api, bundled_chat_stock_index):
+    # Keep the real HTTP/session/executor chain; only the model boundary is
+    # controlled by actual_chat_api. Name lookup uses the complete shipped file.
+    return actual_chat_api
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("message,code", [
+    ("请深入分析 长电科技(600584.SH)", "600584"),
+    ("长电科技", "600584"),
+    ("请深入分析 平安银行(000001.SZ)", "000001"),
+    ("请深入分析 中信银行(601998.SH)", "601998"),
+    ("请深入分析 京东方A(000725.SZ)", "000725"),
+    ("分析长电科技(600900.SH)", None),
+])
+def test_actual_chat_api_full_name_overlap(actual_bundled_chat_api, stream, message, code):
+    client, requests, _config = actual_bundled_chat_api
+    response = client.post("/api/v1/agent/chat" + ("/stream" if stream else ""), json={
+        "session_id": "full-name-overlap", "message": message, "skills": [],
+    })
+    assert response.status_code == 200
+    events = [json.loads(line[6:]) for line in response.text.splitlines()
+              if line.startswith("data: ")] if stream else []
+    accepted = events[0] if stream else response.json()
+    final = events[-1] if stream else response.json()
+    if stream:
+        assert events[0]["type"] == "accepted"
+        assert events[-1]["type"] == "done"
+    if code is None:
+        assert accepted["active_stock_context"] is None
+        assert "请明确提供" in final["content"]
+        assert requests == []
+    else:
+        assert accepted["active_stock_context"]["stock_code"] == code
+        assert final["content"] == "controlled API answer"
+        assert len(requests) == 1
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_actual_chat_api_repeated_full_name_keeps_target(actual_bundled_chat_api, stream):
+    client, requests, _config = actual_bundled_chat_api
+    for message in ["请深入分析 长电科技(600584.SH)", "长电科技", "请深入分析 长电科技(600584.SH)"]:
+        response = client.post("/api/v1/agent/chat" + ("/stream" if stream else ""), json={
+            "session_id": "repeated-full-name", "message": message, "skills": [],
+            "context": {"stock_code": "600584"},
+        })
+        assert response.status_code == 200
+        events = [json.loads(line[6:]) for line in response.text.splitlines()
+                  if line.startswith("data: ")] if stream else []
+        accepted = events[0] if stream else response.json()
+        assert accepted["active_stock_context"]["stock_code"] == "600584"
+        assert (events[-1] if stream else response.json())["content"] == "controlled API answer"
+    assert len(requests) == 3

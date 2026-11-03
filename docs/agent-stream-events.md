@@ -54,6 +54,18 @@ Unknown event types should be ignored or displayed with a generic fallback.
 | `done` | SSE endpoint | The request completed. | `success`, `content`, `error`, `total_steps`, `session_id` |
 | `error` | SSE endpoint | The request failed before normal completion, including preparation rejection before `accepted`. | `message`, `error_code`, `request_id`, `session_id` |
 
+## Registered Names And Embedded Mentions
+
+Chat target preparation treats a validated full name from the stock catalogue
+as one lexical object. A shorter alias or ticker-like fragment wholly inside
+that name does not introduce another target: `长电科技(600584.SH)` selects
+`600584`, while standalone `长电` still selects `600900` (长江电力).
+This applies to both streaming and non-streaming chat through their shared
+object-decision code. Separate mentions and codes outside the name retain their
+normal checks: `长电科技(600900.SH)` still requires clarification, and a shared
+name such as `中芯国际` still needs an unambiguous code.
+The change does not add response fields, SSE event types or report formatting.
+
 ## Acceptance And Session State
 
 The endpoint checks the existing access and backend capability boundaries first.
@@ -113,7 +125,7 @@ followed by `done` (`total_steps=0`), without analysis preparation or a model ca
 Failure, timeout, stop or disconnect after commit does not undo accepted state.
 Terminal writes verify the accepted session/message instance; a late reply cannot
 recreate a deleted session or contaminate a same-named new one. This contract
-does not enable unsupported Codex non-stream/multi combinations or change Gate 0B.
+rejects the retired `codex_app_server` value with HTTP 400 `backend_removed` before preparation/acceptance, including clarification. No `accepted` or state changes occur. The Codex-only cancel endpoint has been removed (404 in API-only mode; the existing SPA GET catch-all returns 405 for unknown POSTs when frontend assets are installed); client abort and session ownership remain. This removal does not change historical Gate 0B results.
 
 ## Web Behavior
 
