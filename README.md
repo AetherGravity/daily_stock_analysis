@@ -38,7 +38,8 @@
 ## 🖥️ 产品预览
 
 <p align="center">
-  <img src="docs/assets/readme_workspace_tour_20260510.gif" alt="DSA Web 工作台演示" width="720">
+  <a href="docs/assets/readme_workspace_tour_20260510.gif"><img src="docs/assets/readme_workspace_preview.gif" alt="DSA Web 工作台演示" width="640"></a><br>
+  <sub>点击动图查看完整演示</sub>
 </p>
 
 ## ✨ 功能特性
@@ -59,7 +60,7 @@
 | 类型 | 支持 |
 |------|------|
 | AI 模型 | [Modelflare](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=daily_stock_analysis)、[AIHubMix](https://inferera.com/?aff=CfMq)、Gemini、OpenAI 兼容、DeepSeek、通义千问、Claude、Ollama 本地模型等 |
-| 行情数据 | AkShare、Tushare、Pytdx、Baostock、YFinance、Longbridge |
+| 行情数据 | [TickPlus（推荐）](http://www.tickplus.org/register?reg=5433cf922395)、AkShare、Tushare、Pytdx、Baostock、YFinance、Longbridge |
 | 新闻搜索 | [SerpAPI](https://serpapi.com/github-daily-stock-analysis)、[Anspire](https://open.anspire.cn/dsa?share_code=QFBC0FYC)、[Tavily](https://tavily.com/)、[Bocha](https://open.bocha.cn/)、[Brave](https://brave.com/search/api/)、[MiniMax](https://platform.minimaxi.com/)、SearXNG |
 | 社交舆情 | [Stock Sentiment API](https://api.adanos.org/docs)（Reddit / X / Polymarket，仅美股，可选） |
 
@@ -137,6 +138,7 @@
 
 | Secret 名称 | 适用市场 | 说明 |
 |------------|:--------:|------|
+| `TICKPLUS_API_KEY` | A 股 / ETF | [TickPlus（推荐）](http://www.tickplus.org/register?reg=5433cf922395)，日 K、实时行情与名称查询 |
 | `TUSHARE_TOKEN` | A 股 | 提升历史行情稳定性 |
 | `LONGBRIDGE_OAUTH_CLIENT_ID` + `LONGBRIDGE_OAUTH_TOKEN_CACHE_B64` | 港股/美股 | 补齐量比、换手率、PE 等字段 |
 

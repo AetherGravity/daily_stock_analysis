@@ -39,7 +39,8 @@ English | [简体中文](../README.md) | [繁體中文](README_CHT.md)
 ## 🖥️ Product Preview
 
 <p align="center">
-  <img src="assets/readme_workspace_tour_20260510.gif" alt="DSA Web workspace demo" width="720">
+  <a href="assets/readme_workspace_tour_20260510.gif"><img src="assets/readme_workspace_preview.gif" alt="DSA Web workspace demo" width="640"></a><br>
+  <sub>Click the GIF to view the full demo</sub>
 </p>
 
 ## ✨ Key Features
@@ -60,7 +61,7 @@ English | [简体中文](../README.md) | [繁體中文](README_CHT.md)
 | Type | Supported |
 |------|-----------|
 | AI Models | [Modelflare](https://modelflare.dev/sign-up?utm_source=github&utm_campaign=daily_stock_analysis), [AIHubMix](https://inferera.com/?aff=CfMq), Gemini, OpenAI-compatible providers, DeepSeek, Qwen, Claude, Ollama |
-| Market Data | AkShare, Tushare, Pytdx, Baostock, YFinance, Longbridge |
+| Market Data | [TickPlus (Recommended)](http://www.tickplus.org/register?reg=5433cf922395), AkShare, Tushare, Pytdx, Baostock, YFinance, Longbridge |
 | News Search | [SerpAPI](https://serpapi.com/github-daily-stock-analysis), [Anspire](https://open.anspire.cn/dsa?share_code=QFBC0FYC), [Tavily](https://tavily.com/), [Bocha](https://open.bocha.cn/), [Brave](https://brave.com/search/api/), [MiniMax](https://platform.minimaxi.com/), SearXNG |
 | Social Sentiment | [Stock Sentiment API](https://api.adanos.org/docs) for Reddit / X / Polymarket, US stocks only |
 
@@ -137,6 +138,7 @@ More search providers, social sentiment, and fallback behavior are in [Search Co
 
 | Secret Name | Market | Description |
 |-------------|:------:|-------------|
+| `TICKPLUS_API_KEY` | A-shares / ETFs | [TickPlus (Recommended)](http://www.tickplus.org/register?reg=5433cf922395): daily bars, realtime indicators and names |
 | `TUSHARE_TOKEN` | A-shares | Improves historical data stability |
 | `LONGBRIDGE_OAUTH_CLIENT_ID` + `LONGBRIDGE_OAUTH_TOKEN_CACHE_B64` | HK/US stocks | Fills in volume ratio, turnover rate, P/E, and other fields |
 
