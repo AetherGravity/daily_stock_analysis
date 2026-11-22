@@ -961,6 +961,9 @@ def setup_env(override: bool = False):
                   system environment variables take precedence.
     """
     Config._capture_bootstrap_runtime_env_overrides()
+    from src.utils.mini_racer_guard import ensure_mini_racer_thread_safety
+
+    ensure_mini_racer_thread_safety()
     # src/config.py -> src/ -> root
     env_file = os.getenv("ENV_FILE")
     if env_file:
@@ -1338,6 +1341,7 @@ class Config:
     
     # === 系统配置 ===
     max_workers: int = 3  # 低并发防封禁
+    per_stock_timeout_seconds: int = 300  # 单股超时隔离上限（秒，0 表示不限时）
     debug: bool = False
     http_proxy: Optional[str] = None  # HTTP 代理 (例如: http://127.0.0.1:10809)
     https_proxy: Optional[str] = None # HTTPS 代理
@@ -1353,6 +1357,13 @@ class Config:
     run_immediately: bool = True              # 启动时是否立即执行一次（非定时模式）
     market_review_enabled: bool = True        # 是否启用大盘复盘
     daily_market_context_enabled: bool = True   # 是否将大盘环境摘要用于个股分析 Prompt 与保守护栏
+    # 跨资产外围上下文（Issue #1910）：默认关闭（opt-in），显式开启后才注入低敏摘要；
+    # 不配置时分析主流程零行为差异
+    cross_asset_context_enabled: bool = False
+    # 跨资产上下文单次组装总预算（秒）；超时未取到的资产组记 error=timeout，不影响主分析
+    cross_asset_context_timeout_seconds: int = 8
+    # 收盘数据 stale 判定天数（指数/利率按交易日+1 自然日判定）
+    cross_asset_context_stale_days: int = 2
     # 大盘复盘市场区域：cn(A股)、hk(港股)、us(美股)、jp(日股)、kr(韩股)、tw(台股)、both(全部市场)
     market_review_region: str = "cn"
     market_review_color_scheme: str = "green_up"
@@ -1445,6 +1456,12 @@ class Config:
     wecom_token: Optional[str] = None               # 回调 Token
     wecom_encoding_aes_key: Optional[str] = None    # 消息加解密密钥
     wecom_agent_id: Optional[str] = None            # 应用 AgentId
+
+    # 企业微信智能机器人（WebSocket 长连接模式，Issue #755 Phase 1，默认关）
+    wecom_aibot_enabled: bool = False               # 是否启用长连接模式（无需公网IP）
+    wecom_aibot_bot_id: Optional[str] = None        # 智能机器人 Bot ID
+    wecom_aibot_secret: Optional[str] = None        # 长连接专用 Secret
+    wecom_aibot_reply_stream: bool = False          # 是否用 stream 流式回复（默认关）
     
     # Telegram 机器人 - 已有 telegram_bot_token, telegram_chat_id
     telegram_webhook_secret: Optional[str] = None   # Webhook 密钥
@@ -2350,6 +2367,12 @@ class Config:
             log_dir=os.getenv('LOG_DIR', './logs'),
             log_level=os.getenv('LOG_LEVEL', 'INFO'),
             max_workers=parse_env_int(os.getenv('MAX_WORKERS'), 3, field_name='MAX_WORKERS', minimum=1),
+            per_stock_timeout_seconds=parse_env_int(
+                os.getenv('PER_STOCK_TIMEOUT_SECONDS'),
+                300,
+                field_name='PER_STOCK_TIMEOUT_SECONDS',
+                minimum=0,
+            ),
             debug=os.getenv('DEBUG', 'false').lower() == 'true',
             config_validate_mode=os.getenv('CONFIG_VALIDATE_MODE', 'warn').lower(),
             http_proxy=os.getenv('HTTP_PROXY'),
@@ -2369,6 +2392,21 @@ class Config:
             run_immediately=legacy_run_immediately,
             market_review_enabled=os.getenv('MARKET_REVIEW_ENABLED', 'true').lower() == 'true',
             daily_market_context_enabled=os.getenv('DAILY_MARKET_CONTEXT_ENABLED', 'true').lower() == 'true',
+            cross_asset_context_enabled=os.getenv('CROSS_ASSET_CONTEXT_ENABLED', 'false').lower() == 'true',
+            cross_asset_context_timeout_seconds=parse_env_int(
+                os.getenv('CROSS_ASSET_CONTEXT_TIMEOUT_SECONDS'),
+                8,
+                field_name='CROSS_ASSET_CONTEXT_TIMEOUT_SECONDS',
+                minimum=1,
+                maximum=120,
+            ),
+            cross_asset_context_stale_days=parse_env_int(
+                os.getenv('CROSS_ASSET_CONTEXT_STALE_DAYS'),
+                2,
+                field_name='CROSS_ASSET_CONTEXT_STALE_DAYS',
+                minimum=1,
+                maximum=30,
+            ),
             market_review_region=cls._parse_market_review_region(
                 os.getenv('MARKET_REVIEW_REGION', 'cn')
             ),
@@ -2398,6 +2436,11 @@ class Config:
             wecom_token=os.getenv('WECOM_TOKEN'),
             wecom_encoding_aes_key=os.getenv('WECOM_ENCODING_AES_KEY'),
             wecom_agent_id=os.getenv('WECOM_AGENT_ID'),
+            # 企业微信智能机器人（WebSocket 长连接，默认关）
+            wecom_aibot_enabled=os.getenv('WECOM_AIBOT_ENABLED', 'false').lower() == 'true',
+            wecom_aibot_bot_id=os.getenv('WECOM_AIBOT_BOT_ID'),
+            wecom_aibot_secret=os.getenv('WECOM_AIBOT_SECRET'),
+            wecom_aibot_reply_stream=os.getenv('WECOM_AIBOT_REPLY_STREAM', 'false').lower() == 'true',
             # Telegram
             telegram_webhook_secret=os.getenv('TELEGRAM_WEBHOOK_SECRET'),
             # Discord 机器人扩展配置

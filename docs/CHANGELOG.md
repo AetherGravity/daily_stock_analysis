@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [修复] 新增幂等的 `py_mini_racer.MiniRacer` 线程安全保护（`src/utils/mini_racer_guard.py`），在应用初始化与数据源层串行化 V8 isolate 创建与求值调用，避免多线程并发分析（`MAX_WORKERS > 1`）时触发原生 `SIGTRAP` 崩溃（Fixes #2586）。
+- [新功能] 新增 agent-agnostic 插件市场入口（`.agents/plugins/marketplace.json`）与 Codex/Claude Code 插件清单（`plugin/`）；将 `stock_analyzer` 正文迁至 `plugin/skills/stock_analyzer/SKILL.md`，根目录 `SKILL.md` 保留为普通文件副本（兼容 `core.symlinks=false` / OpenClaw）；技能明确要求驱动已部署的 DSA 检出，示例先 `chdir` 到检出根目录以共用相对库路径与复盘锁，大盘复盘在支持 `send_notification` 时默认不推送且对旧检出安全拒绝回退；HTTP 对话内个股须 `"notify": false`、大盘复盘须 `"send_notification": false`（`MarketReviewRequest` 亦接受 `notify` 别名）；只读 MCP 仍按完整指南在 checkout 中手动配置（不写入插件包）。
+- [新功能] 新增基于 Astro + Starlight 的官方官网与文档中心子项目（`apps/dsa-site/`），采用 Obsidian Bento 视觉与 5 大支柱文档体系，构建时直读主仓 `docs/`、`strategies/` 与 `docs/architecture/api_spec.json` 生成交互式 OpenAPI 浏览器与中英文全文搜索，并配套 `.dockerignore` 与独立 `site-gate` CI 门禁。
+- [新功能] 企业微信智能机器人 Phase 1：WebSocket 长连接客户端基建与对话最小闭环（#755）。新增 `bot/platforms/wecom_aibot.py` 长连接适配器（`aibot_subscribe` 认证、30s 心跳、断线指数退避重连、单机器人单连接互斥、msgid 排重、会话级限流），收到文本消息复用 `bot/dispatcher` 命令分发与 `AnalyzeCommand`（一次性分析、不改自选股），分析完成后经 source-context 链路以 `aibot_send_msg` 回推企微来源会话，回复经 `aibot_respond_msg` 帧（透传回调 req_id；`reply_stream` 可选、默认关）；出站回复/推送执行双窗口会话配额（30 条/分钟 + 1000 条/小时）。引入可选依赖 `wecom-aibot-python-sdk>=1.0.2`，SDK 缺失时模块可导入、功能自动关闭。新增配置 `WECOM_AIBOT_ENABLED` / `WECOM_AIBOT_BOT_ID` / `WECOM_AIBOT_SECRET` / `WECOM_AIBOT_REPLY_STREAM`（全部默认关，不改变现有用户行为）；既有企业微信群 Webhook 推送通道行为零变化。
+- [修复] 问股页「发送到通知渠道」区分未配置渠道、降噪跳过和全部发送失败，并修正并发命中共享冷却时的提示语，避免把不同会话的冷却跳过误报为“同一通知正在发送中”。
+- [新功能] 新增 A 股收盘情绪快照后端，支持手动提交后台任务、查看规则指标及按实际交易日查询历史趋势。
+- [新功能] 新增可选跨资产上下文通道（cross-asset-v1，Issue #1910 一期，默认关闭）：显式开启 `CROSS_ASSET_CONTEXT_ENABLED=true` 后，个股分析 Prompt 注入“外围环境与跨资产”低敏摘要（一期数据源为 yfinance：港/美/日/韩/台指数 + 富时A50 尽力而为 + VIX + 美债10Y），`risk_appetite` 由确定性投票规则生成，四级 fail-open 降级不中断主分析；Prompt 段落带 UNTRUSTED 哨兵、限行与数值溢出守卫，不配置时主流程零行为差异（Refs #1910）。
+- [文档] 在 `AGENTS.md`、中英文贡献指南、PR 模板与 `analyze-pr` 规范中确立“产品做减法、只做必要高价值改动、把核心功能做简单可靠”的演进与审查原则。
+- [新功能] 将分析报告组装逻辑下沉至共享服务层（`src/services/report_builder_service.py`），并新增可选的只读 stdio MCP 服务（`python -m src.mcp_server`，可选依赖 `mcp>=1.0.0,<2`，默认关闭持仓与配置写入且分析默认不推送）；文档补充分析会消耗模型额度并可能更新本地缓存的提示。
+- [新功能] Web 与桌面端已保存个股报告的策略点位区新增按需价格点位图，展示近 60 个交易日、MA5/MA20 及可解析的狙击点位参考线。
+- [修复] 数据源超时但个股按时完成时复用分析槽位，取消后跳过迟到的报告和新闻写入，保留 LiteLLM 同模型部署重试。识别英文止损点位倒挂，按发行人筛选同名公告，并保留复合风险警报。
 - [chore] 仓库协作 skill 迁至 `.agents/skills/` 并保留 `.claude/skills/` 同步副本兼容 Claude Code，重构 `analyze-pr` 审查规范（文件覆盖账本、14 维影响面清单与不可逆变更约束），精简 `AGENTS.md`、PR 模板与 `ai-governance` 校验脚本，本地审查产物默认直接对话输出（可选 `.reviews/`）。
 - [修复] Agent 工具返回顶层错误或显式 `success: false` 时，进度事件与调用轨迹正确标记失败，并与非重试错误缓存命中保持一致；保留成功空结果、原始工具返回内容及最终回复语义。
 - [新功能] 飞书 Webhook 和 App Bot 交互卡片显示报告标题、信号配色及独立风险警报面板，可通过 `FEISHU_CARD_WEB_URL` 或 `DSA_WEB_URL` 添加 Web 工作台按钮。两种发送模式均按完整请求体字节数分页。
@@ -22,8 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - [修复] Agent 缺少真实历史置信度数据时保持中性校准，不再使用固定的估计值。
 - [文档] 将简体、英文和繁体 README 首页的 HelloGitHub 徽章替换为 Star History 全球排名徽章，与 Trendshift 徽章等高并排展示。
 - [改进] 历史个股栏批量统计展示股票的历史分析次数，减少刷新时的数据库查询。
+- [修复] Web 首页和历史趋势按上海日期计算近 30 天和 90 天的查询起点，避免浏览器所在地切换夏令时时多查或漏查一天。
 - [修复] 持仓交易、现金流水和公司行动拒绝 NaN / Infinity 等非有限数值；CSV 预览、预演和提交在写入前拒绝包含非有限数值或费税合计溢出的交易行，并返回行号和字段，避免污染账本和快照；API 校验错误中的非有限数值可安全返回 JSON。
 - [改进] Web 股票输入框的联想搜索为每只股票只规范化一次代码、名称、拼音和别名，后续搜索直接复用，不再每次都对约 3.2 万条索引重新做 Unicode 规范化。
+- [修复] 持仓页浮动盈亏与收益率改用 A 股习惯的红涨绿跌配色，新增 `text-price-up` / `text-price-down` 工具类并复用 `--home-price-up` / `--home-price-down` 变量，收益为 0 时保持中性色，与个股页保持一致。
+- [修复] 为 MiniMax-M3.1-Flash 推理模型在部署层自动合并默认 `reasoning_effort=low`（保留 YAML deployment 原有 `extra_body` 路由/隐私参数及用户显式推理设置），避免隐藏推理耗尽 `max_tokens` 后返回 HTTP 200 但内容为空。
 
 ## [3.35.0] - 2026-11-16
 
